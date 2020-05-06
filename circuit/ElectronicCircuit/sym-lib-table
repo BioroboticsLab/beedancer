@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name DancerComponents)(type Legacy)(uri ${KIPRJMOD}/DancerComponents.lib)(options "")(descr ""))
+)

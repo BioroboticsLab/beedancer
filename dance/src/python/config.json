@@ -1,0 +1,16 @@
+{
+"waggle_angle_rad" : 0.0,
+"waggle_divergence_rad" : 0.5,
+"waggle_speed_mms-1" : 15.04,
+"waggle_duration_ms" : 86,
+"waggle_freq_hz" : 13 ,
+"waggle_amp_a_rad" : 0.10471975511965977,
+"return_speed_mms-1" : 20.1,
+"return_duration_ms" : 2130,
+"exc_mm":22.0,
+"waggle_ramp_length_ms":100,
+"resampling_steps":700,
+"extra_waggle":2,
+"interpolation_step":2000,
+"nb_waggle_max":15
+}
