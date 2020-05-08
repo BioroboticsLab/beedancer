@@ -9,8 +9,8 @@
 class State_Machine
 {
 public:
-	State_Machine(Motion_control* beedancer);
-	void handle_message(String* input);
+	State_Machine(Motion_Control* beedancer);
+	bool handle_message(String* input);
 	void step();
 	bool runCalibration();
 	bool extract();
@@ -23,7 +23,7 @@ private:
 	enum state{unCalibrated, Calibration, Calibrated, Ready, SpeedMove, PositionMove};
 	state _current_state;
 	bool _is_calibrated = false;
-	Motion_control* _beedancer;
+	Motion_Control* _beedancer;
 	const int _buffer_size = 10;
 	const int _instruction_size = 10;
 	std::queue<std::vector<float>> _instruction_queue;

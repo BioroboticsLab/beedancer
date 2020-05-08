@@ -12,27 +12,27 @@ This is the "brain of the robot"
 by ":". The first number is the instruction the rest are the variable of this instruction.
 */
 
-State_Machine::State_Machine(Motion_control* beedancer)
+State_Machine::State_Machine(Motion_Control* beedancer)
 {
 	_beedancer = beedancer;
-	_current_state = state.unCalibrated;
+	_current_state = unCalibrated;
 }
 
-void State_Machine::handle_message(String* input)
+bool State_Machine::handle_message(String* input)
 {	
 	// First we sychronize the controller with the PC
 	if(*input == "who\n"){
     	Serial.println("beeboogie\n");
-    	}
+    }
 	// If it's already sychronized we process the vector
 	else{
 		std::vector<float> instruction_vector (_instruction_size);
 		for(int i = 0 ; i < _instruction_size ; i++){
 			instruction_vector[i] = getValue(*input, ':', i).toFloat();
-			Serial.println(instruction_vector[i]);
 		}
 		*input = "";
 		_instruction_queue.push(instruction_vector);
+		Serial.print("qs:");
 		Serial.println(_instruction_queue.size());
 	}
 }
@@ -44,22 +44,45 @@ void State_Machine::step()
 	if(!_instruction_queue.empty()){
 		instruction_vector = _instruction_queue.front();
 		_instruction_queue.pop();
+		Serial.print("instruction : ");
+		Serial.println(instruction_vector[0]);
 		switch(_current_state){
 			case unCalibrated :
 				if((int)instruction_vector[0] == 0){
-					_current_state = state.Calibration;
+					_beedancer->calibrate();
+					_current_state = Calibrated;
+				}
+				else if((int)instruction_vector[0] == 1){
+					_beedancer->extract();
+				}
+				else if((int)instruction_vector[0] == 2){
+					_beedancer->retract();
 				}
 				else{
-					Serial.println("Illegal instruction, still not calibrated, please send instruction 0")
+					Serial.println("Illegal instruction, still not calibrated, please send instruction 0");
 				}
 				break;
 
-			case Calibration:
-				_beedancer->calibrate();
-				_current_state = state.Calibrated
+			case Calibrated:
+				if((int)instruction_vector[0] == 1){
+					_beedancer->extract();
+				}
 
 			case Ready:
-				
+				if((int)instruction_vector[0] == 3){
+						_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], instruction_vector[4]);
+					}
+				else if((int)instruction_vector[0] == 2){
+						_beedancer->retract();
+					}
+				else{
+					Serial.println("illegal instruction");
+				}
+				break;
+
+			default:
+				Serial.println("Out of state machine, big problem");
+					
 		}
 		/*switch((int)instruction_vector[0]){
 			case 0 : _beedancer->calibrate(); // case 0 = calibration

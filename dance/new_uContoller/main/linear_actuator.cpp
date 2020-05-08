@@ -33,9 +33,15 @@ void Linear_Actuator::extract()
 {
 	digitalWrite(_directionPin, LOW);
 	ledcWrite(_PWMChannel, _speedValue);
+	while(getPot() < _high){
+		ledcWrite(_PWMChannel, _speedValue);
+		vTaskDelay(100);
+		ledcWrite(_PWMChannel, 0);
+		vTaskDelay(200);}
+
 	for(int i = 0 ; i < 10 ; i++){
-		while(getPot() < _high){delay(1);}
-		delay(10);
+		while(getPot() < _high){vTaskDelay(1);}
+		vTaskDelay(10);
 	}
 	this->stop();
 	_is_extracted = true;
@@ -45,9 +51,15 @@ void Linear_Actuator::retract()
 {  
 	digitalWrite(_directionPin, HIGH);
 	ledcWrite(_PWMChannel, _speedValue);
+	while(getPot() > _low){
+		ledcWrite(_PWMChannel, _speedValue);
+		vTaskDelay(100);
+		ledcWrite(_PWMChannel, 0);
+		vTaskDelay(200);}
+
 	for(int i = 0 ; i < 10 ; i++){
-		while(getPot() > _low){delay(1);}
-		delay(10);
+		while(getPot() > _low){vTaskDelay(1);}
+		vTaskDelay(10);
 	}
 	this->stop();
 	_is_extracted = false;

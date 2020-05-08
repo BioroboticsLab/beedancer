@@ -4,12 +4,13 @@
 #include <Tic.h>
 #include <DebounceInput.h>
 #include "robot.h"
+#include "linear_stepper.h"
 #include <math.h>
 
 float calibrationXY(robot* beedancer);
 
 float calibrationDF(robot* beedancer);
 
-float findOrigine(Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound = false, bool isCircular = false);
+float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound = false, bool isCircular = false);
 
 #endif

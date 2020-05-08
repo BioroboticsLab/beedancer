@@ -1,13 +1,13 @@
-#include "linear_stepper.h"
-#include <Tic.h>
+#include "angular_stepper.h"
 
-Linear_Stepper::Linear_Stepper(int addr, int current_limit) : TicI2C(addr), Printable()
+
+Angular_Stepper::Angular_Stepper(int addr, int current_limit) : TicI2C(addr), Printable()
 {
 	_addr = addr;
 	_current_limit = (uint16_t)current_limit;
 }
 
-void Linear_Stepper::init()
+void Angular_Stepper::init()
 {
 	setProduct(TicProduct::T249);
 	exitSafeStart();
@@ -16,23 +16,23 @@ void Linear_Stepper::init()
 	set_moving_current(false);
 }
 
- int Linear_Stepper::m2step(float m)
+ int Angular_Stepper::rad2step(float rad)
 {
-	return (int)(m / _fullstep_m_ratio * _micro_step);
+	return (int)(rad / _step_rad_ratio * _micro_step / _reduction_ratio);
 }
 
-float Linear_Stepper::step2m(int steps)
+float Angular_Stepper::step2rad(int steps)
 {
-	return steps / _micro_step * _fullstep_m_ratio;
+	return steps / _micro_step * _step_rad_ratio * _reduction_ratio;
 }
 
-float Linear_Stepper::get_pos_meter(){
+float Angular_Stepper::get_pos_rad(){
 	_current_position_step = getCurrentPosition();
-	_current_position_meter = step2m(_current_position_step);
-	return _current_position_meter;
+	_current_position_rad = step2rad(_current_position_step);
+	return _current_position_rad;
 }
 
-void Linear_Stepper::get_micro_step()
+void Angular_Stepper::get_micro_step()
 {
 	switch(getStepMode())
 	{
@@ -53,7 +53,7 @@ void Linear_Stepper::get_micro_step()
 	}
 }
 
-void Linear_Stepper::set_moving_current(bool is_moving)
+void Angular_Stepper::set_moving_current(bool is_moving)
 {
 	if(is_moving){
 		setCurrentLimit(_current_limit);
@@ -63,13 +63,13 @@ void Linear_Stepper::set_moving_current(bool is_moving)
 	}
 }
 
-void Linear_Stepper::set_speed_meter(float meterps)
+void Angular_Stepper::set_speed_rad(float radps)
 {
 	_state_of_operation = 2;
-	if(meterps != 0.){
+	if(radps != 0.){
 		set_moving_current(true);
 		// target in m.s-1
-		_speed_target = (int32_t)(meterps/(_fullstep_m_ratio*(1./_micro_step))*10000); //Vs = Vt/(Ls.Us)*step10000
+		_speed_target = (int32_t)((radps / _reduction_ratio) / (_step_rad_ratio*(1./_micro_step))*10000);
 		// Vs = Step speed
 		// Vt = target speed
 		// Ls = Length of step
@@ -85,21 +85,35 @@ void Linear_Stepper::set_speed_meter(float meterps)
 	}
 }
 
-void Linear_Stepper::set_position_meter(float target, bool blocking)
+void Angular_Stepper::set_position_meter(float target, bool blocking)
 {
 	_state_of_operation = 1;
-	_position_target = (int32_t)m2step(target);
+	
+	float remapped_target = 0.;
+	float shortestArc = 0.;
+	float new_position = 0.;
+	int computed_target = 0;
+
+	remapped_target = getPrincipaleAngle(target);
+	_position_step = getCurrentPosition();
+	_position = step2rad(_position_step);
+	shortestArc = getShortestArc(_position, remapped_target);
+	new_position = _position;
+	new_position = new_position + shortestArc;
+	computed_target = rad2step(new_position);
+
 
 	if(getCurrentLimit() == 0){
 		set_moving_current(true);
 	}
-	set_position_and_acknowledge(_position_target);
+	set_position_and_acknowledge(computed);
+
 	if(blocking){
 		while(!is_idle()){vTaskDelay(1);}
 	}
 }
 
-bool Linear_Stepper::is_idle()
+bool Angular_Stepper::is_idle()
 {
 	switch(_state_of_operation)
 	{
@@ -122,7 +136,7 @@ bool Linear_Stepper::is_idle()
 	}
 }
 
-size_t Linear_Stepper::printTo(Print& p) const 
+size_t Angular_Stepper::printTo(Print& p) const 
 {
 	size_t r = 0;
 
@@ -135,7 +149,7 @@ size_t Linear_Stepper::printTo(Print& p) const
 	return r;
  }
 
-void Linear_Stepper::check_errors(){
+void Angular_Stepper::check_errors(){
 	uint32_t errors = getErrorsOccurred();
 	if (errors & (1 << (uint8_t)TicError::CommandTimeout))
 	{
@@ -156,16 +170,42 @@ void Linear_Stepper::check_errors(){
 	}
 }
 
-void Linear_Stepper::set_position_and_acknowledge(int32_t target)
+void Angular_Stepper::set_position_and_acknowledge(int32_t target)
 {
 	setTargetPosition(target);
 	if(getTargetPosition() != target){set_position_and_acknowledge(target);}
 	else{}
 }
 
-void Linear_Stepper::set_speed_and_acknowledge(int32_t target)
+void Angular_Stepper::set_speed_and_acknowledge(int32_t target)
 {
 	setTargetVelocity(target);
 	if(getTargetVelocity() != target){set_speed_and_acknowledge(target);}
 	else{}
+}
+
+float Angular_Stepper::getPrincipaleAngle(float angleRad)
+{
+	return fmod((angleRad  - PI ), ( 2. * PI )) + PI;
+}
+
+float Angular_Stepper::getShortestArc(float current, float target)
+{
+	float directArc = 0.;
+	float indirectArc = 0.;
+	if(target < current){
+		directArc = 2 * PI - (current - target);
+		indirectArc = - (2 * PI - directArc); 
+	}
+	else{
+		directArc = (target - current);
+		indirectArc = - (2 * PI - directArc);
+	}
+
+	if(abs(directArc) < abs(indirectArc)){
+		return directArc;
+	}
+	else{
+		return indirectArc;
+	}
 }

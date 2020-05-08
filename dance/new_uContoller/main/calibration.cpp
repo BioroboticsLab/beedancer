@@ -1,4 +1,4 @@
-#include "stepper.h"
+#include "linear_stepper.h"
 #include "motion_control.h"
 #include <Tic.h>
 #include "calibration.h"
@@ -15,22 +15,23 @@ float calibrationXY(robot* beedancer)
 
 	if(beedancer->PQ12->is_extracted()){
 		Serial.println("Robot is in extracted position or extracting, please solve this problem first.");
-		return -1;
+		//return -1;
 	}
 
 	findOrigine(beedancer->StepperX, beedancer->xSwitch, true);
-	beedancer->StepperX->setPosition(0.002, true);
+	beedancer->StepperX->set_position_meter(0.002, true);
 
 	findOrigine(beedancer->StepperY, beedancer->ySwitch, true);
-	beedancer->StepperY->setPosition(0.002, true);
+	beedancer->StepperY->set_position_meter(0.002, true);
 
 	findOrigine(beedancer->StepperX, beedancer->xSwitch, true);
-	beedancer->StepperX->setPosition(0.002, true);
-	beedancer->StepperY->setPosition(deltay, true);
+	beedancer->StepperX->set_position_meter(0.002, true);
+
+	beedancer->StepperY->set_position_meter(deltay, true);
 
 	findOrigine(beedancer->StepperX, beedancer->xSwitch, false);
-	deltax = beedancer->StepperX->getPos();
-	beedancer->StepperX->setPosition(0.002, true);
+	deltax = beedancer->StepperX->get_pos_meter();
+	beedancer->StepperX->set_position_meter(0.002, true);
 
 	theta = atan(deltax / deltay) * 180 / PI;
 
@@ -42,11 +43,11 @@ float calibrationDF(robot* beedancer)
 	findOrigine(beedancer->StepperDF, beedancer->dfSwitch, true, true);	
 	findOrigine(beedancer->StepperDF, beedancer->dfSwitch, false, true);
 	Serial.println(beedancer->StepperDF->getCurrentPosition());
-	beedancer->StepperDF->setPosition(-3*PI/4, true);
+	beedancer->StepperDF->set_position_meter(-3*PI/4, true);
 	beedancer->StepperDF->haltAndSetPosition(0);
 }
 
-float findOrigine(Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound, bool isCircular)
+float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound, bool isCircular)
 {
 	delay(200);
 	const int repeat = 3;
@@ -58,34 +59,28 @@ float findOrigine(Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound
 
 	if(!isCircular){
 		//Find first the border
-		Stepper->setVelocity(-0.005);
+		Stepper->set_speed_meter(-0.005);
 
 		//While we don't find it
 		while(!switchPin->low()){switchPin->read();vTaskDelay(1);}
-		Serial.println("!0");
 		Stepper->haltAndHold();
 		vTaskDelay(100);
 
 		//We do it repeat time for averging
 		for(int i = 0 ; i < repeat ; i++)
 		{
-			Serial.println("!1");
-			Stepper->setVelocity(0.001);
-			Serial.println("!2");
+			Stepper->set_speed_meter(0.001);
 			while(!switchPin->high()){switchPin->read();vTaskDelay(1);}
-			Serial.println("!3");
 			Stepper->haltAndHold();
-			Serial.println("!4");
 			vTaskDelay(100);
-			switchPlus[i] = Stepper->getPos();
-			Serial.println("!5");
+			switchPlus[i] = Stepper->get_pos_meter();
 
-			Stepper->setVelocity(-0.001);
+			Stepper->set_speed_meter(-0.001);
 			while(!switchPin->low()){switchPin->read();vTaskDelay(1);}
 			Stepper->haltAndHold();
 			vTaskDelay(100);
 
-			switchMinus[i] = Stepper->getPos();
+			switchMinus[i] = Stepper->get_pos_meter();
 		}
 	}
 	else
@@ -93,22 +88,22 @@ float findOrigine(Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound
 		//We do it repeat time for averging
 		for(int i = 0 ; i < repeat ; i++){
 
-			Stepper->setVelocity(PI/10.);
+			Stepper->set_speed_meter(PI/10.);
 
 			while(!switchPin->falling()){switchPin->read();vTaskDelay(1);}
 			while(!switchPin->rising()){switchPin->read();vTaskDelay(1);}
 
-			switchPlus[i] = Stepper->getPos();
+			switchPlus[i] = Stepper->get_pos_meter();
 
 			vTaskDelay(100);
 			Stepper->haltAndHold();
 			vTaskDelay(100);
 
-			Stepper->setVelocity(-PI/10.);
+			Stepper->set_speed_meter(-PI/10.);
 			while(!switchPin->falling()){switchPin->read();vTaskDelay(1);}
 			while(!switchPin->rising()){switchPin->read();vTaskDelay(1);}
 
-			switchMinus[i] = Stepper->getPos();
+			switchMinus[i] = Stepper->get_pos_meter();
 
 			vTaskDelay(100);
 			Stepper->haltAndHold();
@@ -131,9 +126,9 @@ float findOrigine(Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound
 
 	average_origine = average_origine / (float)repeat;
 
-	current_position = Stepper->getPos();
+	current_position = Stepper->get_pos_meter();
 
-	Stepper->setPosition(average_origine, true);
+	Stepper->set_position_meter(average_origine, true);
 
 	if(setWhenFound)
 	{

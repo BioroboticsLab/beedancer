@@ -75,23 +75,28 @@ void Motion_Control::step()
 		goto_speed(0, 0, 0, 0);
 	}
 	if(_state_of_operation == 1){
+		if(is_on_target()){
+			_state_of_operation = 0;
+		}
 	}
-	if(_state_of_operation ==)
+	if(_state_of_operation == 2){
+	}
 }
 
 void Motion_Control::check_error()
 {
-	if(digitalRead(_beedancer->motorCerrorPin)){
-		_beedancer->StepperX->check_errors();
-		_beedancer->StepperY->check_errors();
-		_beedancer->StepperT->check_errors();
-		_beedancer->StepperDF->check_errors();
-	}
+	_beedancer->StepperX->check_errors();
+	_beedancer->StepperY->check_errors();
+	_beedancer->StepperT->check_errors();
+	_beedancer->StepperDF->check_errors();
 }
 
 void Motion_Control::calibrate()
 {	
-	float theta = calibrationXY();
+	float theta = calibrationXY(_beedancer);
+	_is_calibrated = true;
+	goto_pos(0.0001, 0.0001, 0.0001, 0.0001);
+
 }
 
 bool Motion_Control::is_calibrate()
@@ -133,5 +138,5 @@ void Motion_Control::init()
 
 bool Motion_Control::is_on_target()
 {
-	return is_x_on_target && is_y_on_target && is_t_on_target && is_df_on_target;
+	return _beedancer->StepperX->is_idle() && _beedancer->StepperY->is_idle() && _beedancer->StepperT->is_idle() && _beedancer->StepperDF->is_idle();
 }

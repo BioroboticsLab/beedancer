@@ -1,5 +1,6 @@
 #include "linear_stepper.h"
 #include "robot.h"
+#include "state_machine.h"
 #include "motion_control.h"
 #include <Tic.h>
 #include <DebounceInput.h>
@@ -33,36 +34,48 @@ Linear_Stepper StepperY(ADDR_STEPPER_Y, CURRENT_STEPPER_Y);
 Linear_Stepper StepperT(ADDR_STEPPER_T, CURRENT_STEPPER_T);
 Linear_Stepper StepperDF(ADDR_STEPPER_DF, CURRENT_STEPPER_DF);
 
+// Potentiometer is connected to GPIO 34 input of PQ12 pot
+int PQ12_potPin = 34;
+
+// PQ12 pin command output
+const int PQ12_speedPin = 32;
+const int PQ12_directionPin = 23;
+
+const int xSwitchPin = 12;
+const int ySwitchPin = 13;
+const int dfSwitchPin = 19;
+
+DebouncedInput xSwitchPinDB;
+DebouncedInput ySwitchPinDB;
+DebouncedInput dfSwitchPinDB;
+
 // The string used for each communication
 String inputString = "";
 bool stringComplete = false;  // whether the string is complete
 
 robot beedancer;
 
+// Initialisation of tzhe PQ12 linearmotor
+Linear_Actuator PQ12(PQ12_potPin, PQ12_speedPin, PQ12_directionPin);
+
 Motion_Control Controller(&beedancer);
 
-volatile SemaphoreHandle_t I2CMutex;
+State_Machine Beebrain(&Controller);
 
-// Perform an action every 10 ticks.
-void StepperErrorFunction( void * pvParameters )
-{
-	TickType_t xLastWakeTime;
-	const TickType_t xFrequency = 1;
-	// Initialise the xLastWakeTime variable with the current time.
-	xLastWakeTime = xTaskGetTickCount();
-	const TickType_t xDelay = 1;
+// Initialisation of the TimeOut timer (Tic need a communication every second
+// or they stop with timeout exeption
+hw_timer_t * syncTimerStateMachine = NULL;
+volatile SemaphoreHandle_t syncTimerStateMachineSemaphore;
 
-	for( ;; )
-	{
-		vTaskDelayUntil( &xLastWakeTime, xFrequency );
-		//Things to do constantly
-		Controller.check_error();
-		if(xSemaphoreTake(I2CMutex, xDelay) == pdTRUE){
+// Initialisation of the step timer
+hw_timer_t * syncTimerMotion = NULL;
+volatile SemaphoreHandle_t syncTimerMotionSemaphore;
 
-     	xSemaphoreGive(I2CMutex);
-    	}
-	}
-}
+// Initialisation of the Serial Semaphore
+volatile SemaphoreHandle_t syncSerialSemaphore;
+
+const TickType_t xDelay = 1;
+
 
 void IRAM_ATTR StepperError() {
 	Serial.println("ISR stepper error trigger");
@@ -70,34 +83,35 @@ void IRAM_ATTR StepperError() {
 	Controller.check_error();
 }
 
-// Perform an action every 10 ticks.
-void TESTFunction( void * pvParameters )
+//Definition of The Interrupt Service Routine for Timeout
+void IRAM_ATTR onsyncTimerStateMachine(){
+  xSemaphoreGiveFromISR(syncTimerStateMachineSemaphore, NULL);
+}
+
+//Definition of The Interrupt Service Routine for step
+void IRAM_ATTR onsyncTimerMotion(){
+  xSemaphoreGiveFromISR(syncTimerMotionSemaphore, NULL);
+}
+
+void serialTask( void * parameter )
 {
-	TickType_t xLastWakeTime;
-	const TickType_t xFrequency = 1000;
-	const TickType_t xDelay = 100;
-	// Initialise the xLastWakeTime variable with the current time.
-	xLastWakeTime = xTaskGetTickCount();
-	StepperX.set_moving_current(true);
-	StepperY.set_moving_current(true);
+	const TickType_t xDelay = 1;
+	for( ;; ) {
+		while(Serial.available()) {
+			// get the new byte:
 
-	for( ;; )
-	{
-		// Wait for the next cycle.
-		vTaskDelayUntil( &xLastWakeTime, xFrequency );
-
-		if(xSemaphoreTake(I2CMutex, xDelay) == pdTRUE){
-			Controller.goto_speed(-0.002 , -0.002, 0, 0);
-     	xSemaphoreGive(I2CMutex);
-    	}
-		// Wait for the next cycle.
-		vTaskDelayUntil( &xLastWakeTime, xFrequency );
-		if(xSemaphoreTake(I2CMutex, xDelay) == pdTRUE){
-			Controller.goto_speed(0.002 , 0.002, 0, 0);
-     	xSemaphoreGive(I2CMutex);
-    	}
+			char inChar = (char)Serial.read();
+			// add it to the inputString:
+			inputString += inChar;
+			// if the incoming character is a newline, set a flag so the main loop can
+			// do something about it:
+			if (inChar == '\n') {
+				xSemaphoreGive(syncSerialSemaphore);
+			}
+		}
+		vTaskDelay(1);
 	}
-
+	vTaskDelete( NULL );
 }
 
 void setup() {
@@ -111,12 +125,26 @@ void setup() {
 	StepperY.init();
 	StepperT.init();
 	StepperDF.init();
+	PQ12.init();
 
-	  // All the input outputs of the robot are in a data structure
+
+	// Setting up the debounced inputs
+	pinMode(ySwitchPin, INPUT_PULLUP);
+	pinMode(xSwitchPin, INPUT_PULLUP);
+	pinMode(dfSwitchPin, INPUT_PULLUP);
+	xSwitchPinDB.attach(xSwitchPin);
+	ySwitchPinDB.attach(ySwitchPin);
+	dfSwitchPinDB.attach(dfSwitchPin);
+
+	// All the input outputs of the robot are in a data structure
 	beedancer.StepperT = &StepperT;
 	beedancer.StepperY = &StepperY;
 	beedancer.StepperX = &StepperX;
 	beedancer.StepperDF = &StepperDF;
+	beedancer.PQ12 = &PQ12;
+	beedancer.xSwitch = &xSwitchPinDB;
+	beedancer.ySwitch = &ySwitchPinDB;
+	beedancer.dfSwitch = &dfSwitchPinDB;
 	beedancer.motorCerrorPin = MOTERR_PIN;
 
 	pinMode(PULLUP_PIN, OUTPUT);
@@ -125,67 +153,49 @@ void setup() {
 	pinMode(MOTERR_PIN, INPUT);
 	attachInterrupt(MOTERR_PIN, StepperError, RISING);
 
-	I2CMutex = xSemaphoreCreateMutex(); 
+	syncTimerStateMachineSemaphore = xSemaphoreCreateBinary();
+	syncTimerMotionSemaphore = xSemaphoreCreateBinary();
+	syncSerialSemaphore = xSemaphoreCreateBinary();
 
 	// reserve 200 bytes for the inputString:
 	inputString.reserve(200);
 
-	  // Creating the task who send a timeout flag to the stepper controller
-	/*xTaskCreate(
-		StepperErrorFunction, // Task function.
-		"StepperError", // String with name of task.
-		10000, // Stack size in words.
-		NULL, // Parameter passed as input of the task
-		1, // Priority of the task.
-		NULL); // Task handle.*/
-	// Creating the task who send a timeout flag to the stepper controller
-	/*xTaskCreate(
-		TESTFunction, // Task function.
-		"Test", // String with name of task.
-		10000, // Stack size in words.
-		NULL, // Parameter passed as input of the task
-		1, // Priority of the task.
-		NULL); // Task handle.*/
-	StepperX.set_moving_current(true);
-	StepperY.set_moving_current(true);
-
 	millisPrevSM = millis();
 	millisPrevMC = millis();
+
+	syncTimerStateMachine = timerBegin(0, 80, true);
+	timerAttachInterrupt(syncTimerStateMachine, &onsyncTimerStateMachine, true);
+	timerAlarmWrite(syncTimerStateMachine, 10000, true);
+	timerAlarmEnable(syncTimerStateMachine);
+
+	syncTimerMotion = timerBegin(1, 80, true);
+	timerAttachInterrupt(syncTimerMotion, &onsyncTimerMotion, true);
+	timerAlarmWrite(syncTimerMotion, 1000, true);
+	timerAlarmEnable(syncTimerMotion);
+
+	    // Creating the task who send a timeout flag to the stepper controller
+	xTaskCreate(
+	serialTask, // Task function.
+	"Serial", // String with name of task.
+	10000, // Stack size in words.
+	NULL, // Parameter passed as input of the task
+	1, // Priority of the task.
+	NULL); // Task handle.
 }
+
 
 void loop() {
-	unsigned long currentMillis = millis();
-	/*
-	//State Machine actualisation
-	if (currentMillis - millisPrevSM >= INTERVAL_SM) {
-		millisPrevSM = currentMillis;
-
+	
+	if(xSemaphoreTake(syncSerialSemaphore, 0) == pdTRUE){
+		Beebrain.handle_message(&inputString);
 	}
-	//Motion Control actualisation
-	currentMillis = millis()
-	if (currentMillis - millisPrevSM >= INTERVAL_MC) {
-		millisPrevMC = currentMillis;
-
+	
+	if(xSemaphoreTake(syncTimerStateMachineSemaphore, xDelay) == pdTRUE){
+		Beebrain.step();
 	}
-	*/
-	delay(1000);
-	Controller.goto_pos(-0.002 , -0.002, 0, 0);
-
-	delay(1000);
-	Controller.goto_pos(0.002 , 0.002, 0, 0);
-
-}
-
-void serialEvent() {
-	while (Serial.available()) {
-		// get the new byte:
-		char inChar = (char)Serial.read();
-		// add it to the inputString:
-		inputString += inChar;
-		// if the incoming character is a newline, set a flag so the main loop can
-		// do something about it:
-		if (inChar == '\n') {
-			stringComplete = true;
-		}
+	
+	if(xSemaphoreTake(syncTimerMotionSemaphore, xDelay) == pdTRUE){
+		Controller.step();
 	}
+
 }
