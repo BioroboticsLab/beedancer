@@ -5,7 +5,6 @@ Linear_Actuator::Linear_Actuator(int potentiometerPin, int speedPin, int directi
 	_potentiometerPin = potentiometerPin;
 	_speedPin = speedPin;
 	_directionPin = directionPin;
-	_is_extracted = true;
 }
 
 void Linear_Actuator::init()
