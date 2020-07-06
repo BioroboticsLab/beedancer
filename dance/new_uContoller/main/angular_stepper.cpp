@@ -1,10 +1,11 @@
 #include "angular_stepper.h"
 
 
-Angular_Stepper::Angular_Stepper(int addr, int current_limit) : TicI2C(addr), Printable()
+Angular_Stepper::Angular_Stepper(int addr, int current_limit, float reduction_ratio) : TicI2C(addr), Printable()
 {
 	_addr = addr;
 	_current_limit = (uint16_t)current_limit;
+	_reduction_ratio = reduction_ratio;
 }
 
 void Angular_Stepper::init()
@@ -23,13 +24,18 @@ void Angular_Stepper::init()
 
 float Angular_Stepper::step2rad(int steps)
 {
-	return steps / _micro_step * _step_rad_ratio * _reduction_ratio;
+	return (float)steps / _micro_step * _step_rad_ratio * _reduction_ratio;
 }
 
 float Angular_Stepper::get_pos_rad(){
 	_current_position_step = getCurrentPosition();
 	_current_position_rad = step2rad(_current_position_step);
 	return _current_position_rad;
+}
+
+void Angular_Stepper::set_max_speed(float max_speed){
+	int32_t max_speed_steps = (int32_t)((max_speed / _reduction_ratio) / (_step_rad_ratio*(1./_micro_step))*10000);
+	setMaxSpeed(max_speed_steps);
 }
 
 void Angular_Stepper::get_micro_step()
@@ -85,31 +91,31 @@ void Angular_Stepper::set_speed_rad(float radps)
 	}
 }
 
-void Angular_Stepper::set_position_meter(float target, bool blocking)
+void Angular_Stepper::set_position_rad(float target, bool blocking)
 {
 	_state_of_operation = 1;
 	
 	float remapped_target = 0.;
 	float shortestArc = 0.;
 	float new_position = 0.;
-	int computed_target = 0;
 
 	remapped_target = getPrincipaleAngle(target);
-	_position_step = getCurrentPosition();
-	_position = step2rad(_position_step);
-	shortestArc = getShortestArc(_position, remapped_target);
-	new_position = _position;
+	_current_position_step = getCurrentPosition();
+	_current_position_rad = step2rad(_current_position_step);
+	shortestArc = getShortestArc(_current_position_rad, remapped_target);
+	new_position = _current_position_rad;
 	new_position = new_position + shortestArc;
-	computed_target = rad2step(new_position);
+	_position_target = rad2step(new_position);
 
 
 	if(getCurrentLimit() == 0){
 		set_moving_current(true);
 	}
-	set_position_and_acknowledge(computed);
+	set_position_and_acknowledge(_position_target);
 
 	if(blocking){
 		while(!is_idle()){vTaskDelay(1);}
+		_state_of_operation = 0;
 	}
 }
 

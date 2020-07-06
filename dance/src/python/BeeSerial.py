@@ -29,8 +29,6 @@ class SerialBeeBoogie():
 		self.serial = None
 		self.open_port(self.port)
 
-		self.close_port()
-
 	def open_port(self, port):
 		self.serial = serial.Serial(port = port, baudrate = self.baudrate, timeout = self.timeout)
 		time.sleep(2)
@@ -72,7 +70,7 @@ class SerialBeeBoogie():
 		"""
 		#Wait for device to send data
 		line = ''
-		q=bytes('who'+'\n', 'utf-8')
+		q=bytes('who' + '\n', 'utf-8')
 		serial.write(q)
 		c = serial.readline().decode('utf-8')
 		line += c
@@ -81,10 +79,26 @@ class SerialBeeBoogie():
 			return True
 		return False
 
-	def send_and_ack():
-		return 0
+	def send_and_ack(self, string):
+		self.serial.write(bytes(string + '\n', 'utf-8'))
+		line = ''
+		while not "ACK" in line:
+			c = self.serial.readline().decode('utf-8')
+			line += c
+		'''
+		line2 = ''
+		c = self.serial.readline().decode('utf-8')
+		line2 += c
+		line3 = ''
+		c = self.serial.readline().decode('utf-8')
+		line3 += c
+		return line, line2, line3'''
+		return line
+
+
 		
 
 if __name__=='__main__':
 	password = 'beeboogie'
 	serial = SerialBeeBoogie(115200, password)
+	serial.close_port()

@@ -4,13 +4,16 @@
 #include "linear_stepper.h"
 #include "robot.h"
 #include "calibration.h"
+#include <queue>
 
 class Motion_Control
 {
 public:
 	Motion_Control(robot* beedancer);
-	void goto_pos(float x, float y, float t, float df);
-	void goto_speed(float x, float y, float t, float df);
+	void goto_pos(float x, float y, float t, bool blocking = false);
+	void rotate_dancefloor(float target, float speed);
+	void goto_speed(float x, float y, float t);
+	void dance(float x, float y, float t, float interval_milliS);
 	void calibrate();
 	bool is_calibrate();
 	bool is_calibrating();
@@ -34,6 +37,9 @@ private:
   	bool _speed_changed = false;
   	bool _pos_changed = false;
 
+  	int _counter = 0;
+  	int _time = 0.;
+
 	bool is_x_on_target = true;
 	bool is_y_on_target = true;
 	bool is_t_on_target = true;
@@ -51,5 +57,8 @@ private:
 	float _target_speed_df = 0.;
 
   	float _theta_robot_comb = 0.;
+
+  	std::queue<std::vector<float>> _instruction_queue;
+  	std::vector<float> _instruction_vector{std::vector<float>(4 ,0.)};
 };
 #endif

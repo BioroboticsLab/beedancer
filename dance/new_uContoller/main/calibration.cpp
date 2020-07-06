@@ -1,4 +1,5 @@
 #include "linear_stepper.h"
+#include "angular_stepper.h"
 #include "motion_control.h"
 #include <Tic.h>
 #include "calibration.h"
@@ -38,16 +39,119 @@ float calibrationXY(robot* beedancer)
 	return theta;
 }
 
-float calibrationDF(robot* beedancer)
-{	
-	findOrigine(beedancer->StepperDF, beedancer->dfSwitch, true, true);	
-	findOrigine(beedancer->StepperDF, beedancer->dfSwitch, false, true);
-	Serial.println(beedancer->StepperDF->getCurrentPosition());
-	beedancer->StepperDF->set_position_meter(-3*PI/4, true);
+
+
+float calibrationT(robot* beedancer)
+{
+	delay(200);
+	int nb_step = 500;
+	int values[nb_step];
+	int sensor_Value = 0;
+	digitalWrite(beedancer->led_pin, HIGH);
+	int max_v = INT_MIN;
+	int max_i = 0;
+	float first_middle = 0.;
+	float final_middle1, final_middle2, final_middle3;
+
+	first_middle = findOriginePhoto(beedancer->StepperT, beedancer->photo_res, 0, 2*PI, 500, 0);
+
+	final_middle1 = findOriginePhoto(beedancer->StepperT, beedancer->photo_res, first_middle - PI / 6, first_middle + PI / 6, 200, 0); //first_middle - PI/6 + max_i * (PI/3) / nb_step;
+	final_middle2 = findOriginePhoto(beedancer->StepperT, beedancer->photo_res, first_middle + PI / 6, first_middle - PI / 6, 200, 0);
+	final_middle3 = findOriginePhoto(beedancer->StepperT, beedancer->photo_res, first_middle - PI / 6, first_middle + PI / 6, 200, 0);
+
+	beedancer->StepperT->set_position_rad((final_middle1+final_middle2+final_middle3)/3, true);
+	beedancer->StepperT->haltAndSetPosition(0);
+
+	digitalWrite(beedancer->led_pin,LOW);
+
+}
+
+float calibrationDF(robot* beedancer){
+	findOrigineDF(beedancer);
+}
+
+float findOrigineDF(robot* beedancer){	
+	const int repeat = 3;
+	float switchPlus[repeat];
+	float switchMinus[repeat];
+	float switchAverage[repeat];
+	float average_origine;
+	//We do it repeat time for averging
+	for(int i = 0 ; i < repeat ; i++){
+
+		beedancer->StepperDF->set_speed_rad(PI/15.);
+
+		while(!beedancer->dfSwitch->falling()){beedancer->dfSwitch->read();vTaskDelay(1);}
+		while(!beedancer->dfSwitch->rising()){beedancer->dfSwitch->read();vTaskDelay(1);}
+
+		switchPlus[i] = beedancer->StepperDF->get_pos_rad();
+
+		vTaskDelay(100);
+		beedancer->StepperDF->haltAndHold();
+		vTaskDelay(100);
+
+		beedancer->StepperDF->set_speed_rad(-PI/15.);
+		while(!beedancer->dfSwitch->falling()){beedancer->dfSwitch->read();vTaskDelay(1);}
+		while(!beedancer->dfSwitch->rising()){beedancer->dfSwitch->read();vTaskDelay(1);}
+
+		switchMinus[i] = beedancer->StepperDF->get_pos_rad();
+
+		vTaskDelay(100);
+		beedancer->StepperDF->haltAndHold();
+		vTaskDelay(100);
+	}
+	//Computing an average
+	for(int i = 0 ; i < repeat ; i++)
+	{
+		switchAverage[i] = (switchPlus[i] + switchMinus[i]) / 2.;
+	}
+	for(int i = 0 ; i < repeat ; i++)
+	{
+		average_origine += switchAverage[i];
+	}
+
+	average_origine = average_origine / (float)repeat;
+
+	beedancer->StepperDF->set_position_rad(average_origine, true);
+
 	beedancer->StepperDF->haltAndSetPosition(0);
 }
 
-float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound, bool isCircular)
+float findOriginePhoto(Angular_Stepper* Stepper, int photo_diode, float from, float to, int nb_points, int exclude_border){
+	int values[nb_points];
+	int max_v = INT_MIN;
+	int max_i = 0;
+
+	//Second slow round
+	for(int i = 0 ; i < nb_points  ; i++){
+		Stepper->set_position_rad(from + ((i * (to - from)) / nb_points), true);
+
+		int mean = 0;
+		for(int j=0 ; j < 10 ; j++){
+			mean = mean + analogRead(photo_diode);
+		}
+		
+		mean = (int)(mean / 10);
+		values[i] = mean;
+	}
+	// Square convolution
+	for(int i=1; i < sizeof(values)/sizeof(values[0])-1; i++ ){
+		values[i] = (values[i-1] + values[i] + values[i+1])/3.;
+	}
+
+	//Compute index of max value
+	for ( int i = exclude_border; i < sizeof(values)/sizeof(values[0]) - exclude_border; i++ )
+	{
+		if ( values[i] > max_v )
+		{
+			max_v = values[i];
+			max_i = i;
+		}
+	}
+	return (from + ((max_i * (to - from)) / nb_points));
+}
+
+float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound)
 {
 	delay(200);
 	const int repeat = 3;
@@ -57,62 +161,30 @@ float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWh
 	float current_position = 0.;
 	float average_origine = 0.;
 
-	if(!isCircular){
-		//Find first the border
-		Stepper->set_speed_meter(-0.005);
+	//Find first the border
+	Stepper->set_speed_meter(-0.005);
 
-		//While we don't find it
+	//While we don't find it
+	while(!switchPin->low()){switchPin->read();vTaskDelay(1);}
+	Stepper->haltAndHold();
+	vTaskDelay(100);
+
+	//We do it repeat time for averging
+	for(int i = 0 ; i < repeat ; i++)
+	{
+		Stepper->set_speed_meter(0.001);
+		while(!switchPin->high()){switchPin->read();vTaskDelay(1);}
+		Stepper->haltAndHold();
+		vTaskDelay(100);
+		switchPlus[i] = Stepper->get_pos_meter();
+
+		Stepper->set_speed_meter(-0.001);
 		while(!switchPin->low()){switchPin->read();vTaskDelay(1);}
 		Stepper->haltAndHold();
 		vTaskDelay(100);
 
-		//We do it repeat time for averging
-		for(int i = 0 ; i < repeat ; i++)
-		{
-			Stepper->set_speed_meter(0.001);
-			while(!switchPin->high()){switchPin->read();vTaskDelay(1);}
-			Stepper->haltAndHold();
-			vTaskDelay(100);
-			switchPlus[i] = Stepper->get_pos_meter();
-
-			Stepper->set_speed_meter(-0.001);
-			while(!switchPin->low()){switchPin->read();vTaskDelay(1);}
-			Stepper->haltAndHold();
-			vTaskDelay(100);
-
-			switchMinus[i] = Stepper->get_pos_meter();
-		}
+		switchMinus[i] = Stepper->get_pos_meter();
 	}
-	else
-	{
-		//We do it repeat time for averging
-		for(int i = 0 ; i < repeat ; i++){
-
-			Stepper->set_speed_meter(PI/10.);
-
-			while(!switchPin->falling()){switchPin->read();vTaskDelay(1);}
-			while(!switchPin->rising()){switchPin->read();vTaskDelay(1);}
-
-			switchPlus[i] = Stepper->get_pos_meter();
-
-			vTaskDelay(100);
-			Stepper->haltAndHold();
-			vTaskDelay(100);
-
-			Stepper->set_speed_meter(-PI/10.);
-			while(!switchPin->falling()){switchPin->read();vTaskDelay(1);}
-			while(!switchPin->rising()){switchPin->read();vTaskDelay(1);}
-
-			switchMinus[i] = Stepper->get_pos_meter();
-
-			vTaskDelay(100);
-			Stepper->haltAndHold();
-			vTaskDelay(100);
-
-		}
-	}
-
-
 
 	//Computing an average
 	for(int i = 0 ; i < repeat ; i++)
@@ -126,8 +198,6 @@ float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWh
 
 	average_origine = average_origine / (float)repeat;
 
-	current_position = Stepper->get_pos_meter();
-
 	Stepper->set_position_meter(average_origine, true);
 
 	if(setWhenFound)
@@ -135,5 +205,5 @@ float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWh
 		Stepper->haltAndSetPosition(0);
 	}
 
-	return current_position;
+	return average_origine;
 }

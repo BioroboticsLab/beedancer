@@ -22,7 +22,15 @@ bool State_Machine::handle_message(String* input)
 {	
 	// First we sychronize the controller with the PC
 	if(*input == "who\n"){
-    	Serial.println("beeboogie\n");
+    	Serial.println("beeboogie");
+    	*input = "";
+    	return true;
+    }
+    //
+    if(*input == "how\n"){
+    	Serial.println(_current_state);
+    	*input = "";
+    	return true;
     }
 	// If it's already sychronized we process the vector
 	else{
@@ -34,6 +42,7 @@ bool State_Machine::handle_message(String* input)
 		_instruction_queue.push(instruction_vector);
 		Serial.print("qs:");
 		Serial.println(_instruction_queue.size());
+		return true;
 	}
 }
 
@@ -44,17 +53,27 @@ void State_Machine::step()
 	if(!_instruction_queue.empty()){
 		instruction_vector = _instruction_queue.front();
 		_instruction_queue.pop();
-		Serial.print("instruction : ");
-		Serial.println(instruction_vector[0]);
 		switch(_current_state){
 			case unCalibrated :
 				if((int)instruction_vector[0] == 0){
 					_beedancer->calibrate();
 					_current_state = Calibrated;
+					send_ack();
 				}
-				else if((int)instruction_vector[0] == 1){
-					_beedancer->extract();
+
+
+
+
+				else if((int)instruction_vector[0] == 4){
+					_beedancer->dance(instruction_vector[1], instruction_vector[2], instruction_vector[3], instruction_vector[4]);
 				}
+				else if((int)instruction_vector[0] == 3){
+					_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], true);
+					send_ack();
+				}
+
+
+
 				else if((int)instruction_vector[0] == 2){
 					_beedancer->retract();
 				}
@@ -64,19 +83,47 @@ void State_Machine::step()
 				break;
 
 			case Calibrated:
-				if((int)instruction_vector[0] == 1){
+				if((int)instruction_vector[0] == 3){
+					_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], true);
+					send_ack();
+				}
+				else if((int)instruction_vector[0] == 1){
+					//_beedancer->goto_pos(0.01869, 0.00654, 4.972, true);
 					_beedancer->extract();
+					_current_state = Ready;
+					send_ack();
+				}
+				else{
+					Serial.println("Illegal instruction, still not extracted");
 				}
 
 			case Ready:
 				if((int)instruction_vector[0] == 3){
-						_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], instruction_vector[4]);
-					}
+					_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], true);
+					send_ack();
+				}
 				else if((int)instruction_vector[0] == 2){
-						_beedancer->retract();
-					}
+					_beedancer->retract();
+					_current_state = Calibrated;
+					send_ack();
+				}
+				else if((int)instruction_vector[0] == 4){
+					_beedancer->dance(instruction_vector[1], instruction_vector[2], instruction_vector[3], instruction_vector[4]);
+					_current_state = Dancing;
+				}
 				else{
 					Serial.println("illegal instruction");
+				}
+				break;
+
+			case Dancing:
+				if((int)instruction_vector[0] == 4){
+					_beedancer->dance(instruction_vector[1], instruction_vector[2], instruction_vector[3], instruction_vector[4]);
+				}
+				if((int)instruction_vector[0] == 3){
+					_beedancer->goto_pos(instruction_vector[1], instruction_vector[2], instruction_vector[3], true);
+					send_ack();
+					_current_state = Ready;
 				}
 				break;
 
@@ -84,32 +131,12 @@ void State_Machine::step()
 				Serial.println("Out of state machine, big problem");
 					
 		}
-		/*switch((int)instruction_vector[0]){
-			case 0 : _beedancer->calibrate(); // case 0 = calibration
-					Serial.println("calibrate");
-					break;
-
-			case 1 : _beedancer->extract(); // case 1 = extraction
-					Serial.println("extract");
-					break;
-			case 2 : _beedancer->retract(); // case 2 = retraction
-					Serial.println("retract");
-					break;
-			case 3 : _beedancer->goto_target(instruction_vector[1],
-											 instruction_vector[2], 
-											 instruction_vector[3]); // case 3 = move to blocking
-					Serial.println("move to");
-					break;
-
-			case 4 : //; // case 4 = move in the rythm 
-					Serial.println("retract");
-					break;
-			case 5 : //; // case 4 = 
-					Serial.println("retract");
-					break;
-		}*/
 	}
 	else{}
+}
+
+void State_Machine::send_ack(){
+	Serial.println("ACK");
 }
 
 String State_Machine::getValue(String data, char separator, int index)

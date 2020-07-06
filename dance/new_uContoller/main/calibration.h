@@ -9,8 +9,14 @@
 
 float calibrationXY(robot* beedancer);
 
+float calibrationT(robot* beedancer);
+
 float calibrationDF(robot* beedancer);
 
-float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound = false, bool isCircular = false);
+float findOrigineDF(robot* beedancer);
+
+float findOriginePhoto(Angular_Stepper* Stepper, int photo_diode, float from, float to, int nb_points, int exclude_border = 0);
+
+float findOrigine(Linear_Stepper* Stepper, DebouncedInput* switchPin, bool setWhenFound = false);
 
 #endif

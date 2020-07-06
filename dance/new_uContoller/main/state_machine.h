@@ -12,15 +12,11 @@ public:
 	State_Machine(Motion_Control* beedancer);
 	bool handle_message(String* input);
 	void step();
-	bool runCalibration();
-	bool extract();
-	bool retract();
-	bool speedMove();
-	bool positionMove();
+	void send_ack();
 	String getValue(String data, char separator, int index);
 
 private:
-	enum state{unCalibrated, Calibration, Calibrated, Ready, SpeedMove, PositionMove};
+	enum state{unCalibrated, Calibrated, Ready, Dancing};
 	state _current_state;
 	bool _is_calibrated = false;
 	Motion_Control* _beedancer;

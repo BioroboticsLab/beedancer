@@ -57,6 +57,18 @@ class BeeBoogie():
 		'''
 		np.save(file_name, self.waggle_function_list)
 
+	def rotation(self, angle, x, y, theta):
+		'''
+		easy
+		'''
+		theta = theta + angle
+		c, s = np.cos(angle), np.sin(angle)
+		R = np.array([[c,-s],[s,c]])
+		coord = np.vstack([x,y])
+		coord = np.dot(R, coord)
+			
+		return coord[0,:], coord[1,:], theta
+
 	def waggle_generator(self, speed_ramp):
 		'''
 		This function generate a list of dict. each dict contain the interpolation function of the trjectory with waggle
@@ -86,18 +98,6 @@ class BeeBoogie():
 				waggle_ramp_tab[i]=waggle_ramp(time_vector[i]) #* waggle_amp
 			
 			return waggle_ramp_tab
-		
-		def rotation(angle, x, y, theta):
-			'''
-			easy
-			'''
-			theta = theta + angle
-			c, s = np.cos(angle), np.sin(angle)
-			R = np.array([[c,-s],[s,c]])
-			coord = np.vstack([x,y])
-			coord = np.dot(R, coord)
-			
-			return coord[0,:], coord[1,:], theta
 			
 		#Get all the parameter
 		nb_waggle_max = self.config['nb_waggle_max']
@@ -154,8 +154,8 @@ class BeeBoogie():
 				x_bee[j] = x_robot[j] - exc * np.cos(theta_bee[j])
 				y_bee[j] = y_robot[j] - exc * np.sin(theta_bee[j])
 				
-			x_bee, y_bee, theta_bee = rotation(-waggle_divergence/2, x_bee, y_bee, theta_bee)
-			x_robot, y_robot, theta_robot = rotation(-waggle_divergence/2, x_robot, y_robot, theta_robot) 
+			x_bee, y_bee, theta_bee = self.rotation(-waggle_divergence/2, x_bee, y_bee, theta_bee)
+			x_robot, y_robot, theta_robot = self.rotation(-waggle_divergence/2, x_robot, y_robot, theta_robot) 
 			
 			#Produce all the interpolation for being able to change timestep if needed
 			function_dict['inter_x_bee'] = interp1d(time_vector_duration, x_bee, kind='linear')
@@ -364,12 +364,15 @@ class BeeBoogie():
 		self.generate_complete_trajectory(nb_waggle)
 		self.current_position_step = 0
 
-	def get_next_pos(self):
-		self.current_position_step = self.current_position_step + 10
+	def get_next_pos(self, delta):
+		self.current_position_step = self.current_position_step + delta
 		if self.current_position_step >= self.total_step:
 			self.current_position_step = self.current_position_step % self.total_step
 
-		return self.bee_trajectory[self.current_position_step, :]
+		return self.robot_trajectory[self.current_position_step, :]
+
+	def get_pos_tab(self, delta):
+		return self.robot_trajectory[5::delta]
 
 
 if __name__ == '__main__':
@@ -377,10 +380,11 @@ if __name__ == '__main__':
 	bee.init_trajectory(15)
 
 	print(bee.total_duration, bee.total_step, bee.robot_trajectory.shape, bee.bee_trajectory.shape)
-	#plt.scatter(bee.robot_trajectory[:,0], bee.robot_trajectory[:,1], c=bee.robot_trajectory[:,2], cmap='magma')
-	#plt.scatter(bee.bee_trajectory[:,0], bee.bee_trajectory[:,1], c=bee.bee_trajectory[:,2])
-	#plt.show()
-
+	#plt.scatter(bee.robot_trajectory[5::20,0], bee.robot_trajectory[5::20,1], c=bee.robot_trajectory[5::20,2], cmap='magma')
+	plt.plot(bee.bee_trajectory[5::30,0], bee.bee_trajectory[5::30,1])#, c=bee.bee_trajectory[5::50,2])
+	plt.show()
+	#bee.export_to_svg()
+'''
 	fig, ax = plt.subplots()
 	ln, = plt.plot([], [], 'r.', animated=True)
 
@@ -396,8 +400,8 @@ if __name__ == '__main__':
 
 	print(bee.total_step)
 	ani = FuncAnimation(fig, update, frames=bee.total_step-10,
-            init_func=init, blit=True, interval=10)
-	plt.show()
+            init_func=init, blit=True, interval=10)'''
+	#plt.show()
 '''
 	import matplotlib.pyplot as plt
 	import numpy as np

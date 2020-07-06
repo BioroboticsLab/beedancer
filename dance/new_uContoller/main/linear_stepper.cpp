@@ -23,7 +23,7 @@ void Linear_Stepper::init()
 
 float Linear_Stepper::step2m(int steps)
 {
-	return steps / _micro_step * _fullstep_m_ratio;
+	return (float)steps / _micro_step * _fullstep_m_ratio;
 }
 
 float Linear_Stepper::get_pos_meter(){
@@ -96,6 +96,7 @@ void Linear_Stepper::set_position_meter(float target, bool blocking)
 	set_position_and_acknowledge(_position_target);
 	if(blocking){
 		while(!is_idle()){vTaskDelay(1);}
+		_state_of_operation = 0;
 	}
 }
 
@@ -137,6 +138,32 @@ size_t Linear_Stepper::printTo(Print& p) const
 
 void Linear_Stepper::check_errors(){
 	uint32_t errors = getErrorsOccurred();
+	if (errors & (1 << (uint8_t)TicError::IntentionallyDeenergized))
+	{
+		Serial.print("ErrorOccured (IntentionallyDeenergized) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::MotorDriverError))
+	{
+		Serial.print("ErrorOccured (MotorDriverError) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::LowVin))
+	{
+		Serial.print("ErrorOccured (LowVin) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::KillSwitch))
+	{
+		Serial.print("ErrorOccured (KillSwitch) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::RequiredInputInvalid))
+	{
+		Serial.print("ErrorOccured (RequiredInputInvalid) on Stepper : ");
+		Serial.println(_addr);
+	}
+
 	if (errors & (1 << (uint8_t)TicError::CommandTimeout))
 	{
 		Serial.print("ErrorOccured (TimeOut) on Stepper : ");
@@ -153,6 +180,42 @@ void Linear_Stepper::check_errors(){
 		else if(_state_of_operation == 2){
 			set_speed_and_acknowledge(_speed_target);
 		}
+	}
+
+	if (errors & (1 << (uint8_t)TicError::SafeStartViolation))
+	{
+		Serial.print("ErrorOccured (SafeStartViolation) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::ErrLineHigh))
+	{
+		Serial.print("ErrorOccured (ErrLineHigh) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::SerialFraming))
+	{
+		Serial.print("ErrorOccured (SerialFraming) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::RxOverrun))
+	{
+		Serial.print("ErrorOccured (RxOverrun) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::Format))
+	{
+		Serial.print("ErrorOccured (Format) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::Crc))
+	{
+		Serial.print("ErrorOccured (Crc) on Stepper : ");
+		Serial.println(_addr);
+	}
+	if (errors & (1 << (uint8_t)TicError::EncoderSkip))
+	{
+		Serial.print("ErrorOccured (EncoderSkip) on Stepper : ");
+		Serial.println(_addr);
 	}
 }
 

@@ -19,7 +19,9 @@
 
 #define PULLUP_PIN 1
 #define PULLDOWN_PIN_1 6
-#define PULLDOWN_PIN_2 7
+
+#define LED_BEE_PIN 5
+#define PHOTO_RES_PIN 7
 
 #define MOTERR_PIN 18
 
@@ -31,8 +33,8 @@ unsigned long millisPrevMC = 0;
 
 Linear_Stepper StepperX(ADDR_STEPPER_X, CURRENT_STEPPER_X);
 Linear_Stepper StepperY(ADDR_STEPPER_Y, CURRENT_STEPPER_Y);
-Linear_Stepper StepperT(ADDR_STEPPER_T, CURRENT_STEPPER_T);
-Linear_Stepper StepperDF(ADDR_STEPPER_DF, CURRENT_STEPPER_DF);
+Angular_Stepper StepperT(ADDR_STEPPER_T, CURRENT_STEPPER_T, 1.);
+Angular_Stepper StepperDF(ADDR_STEPPER_DF, CURRENT_STEPPER_DF, 11./72.);
 
 // Potentiometer is connected to GPIO 34 input of PQ12 pot
 int PQ12_potPin = 34;
@@ -44,6 +46,7 @@ const int PQ12_directionPin = 23;
 const int xSwitchPin = 12;
 const int ySwitchPin = 13;
 const int dfSwitchPin = 19;
+const int dfSwitchPinGround = 15;
 
 DebouncedInput xSwitchPinDB;
 DebouncedInput ySwitchPinDB;
@@ -116,10 +119,11 @@ void serialTask( void * parameter )
 
 void setup() {
 	// put your setup code here, to run once:
-	Serial.begin(115200);
+	Serial.begin(500000);
 	vTaskDelay(20);
 	Wire.begin();
 	vTaskDelay(20);
+	Wire.setClock(1000000);
 
 	StepperX.init();
 	StepperY.init();
@@ -132,9 +136,14 @@ void setup() {
 	pinMode(ySwitchPin, INPUT_PULLUP);
 	pinMode(xSwitchPin, INPUT_PULLUP);
 	pinMode(dfSwitchPin, INPUT_PULLUP);
+	pinMode(dfSwitchPinGround, OUTPUT);
+	digitalWrite(dfSwitchPinGround, LOW);
 	xSwitchPinDB.attach(xSwitchPin);
 	ySwitchPinDB.attach(ySwitchPin);
 	dfSwitchPinDB.attach(dfSwitchPin);
+
+	pinMode(LED_BEE_PIN, OUTPUT);
+	pinMode(PHOTO_RES_PIN, INPUT_PULLDOWN);
 
 	// All the input outputs of the robot are in a data structure
 	beedancer.StepperT = &StepperT;
@@ -145,6 +154,8 @@ void setup() {
 	beedancer.xSwitch = &xSwitchPinDB;
 	beedancer.ySwitch = &ySwitchPinDB;
 	beedancer.dfSwitch = &dfSwitchPinDB;
+	beedancer.photo_res = PHOTO_RES_PIN;
+	beedancer.led_pin = LED_BEE_PIN;
 	beedancer.motorCerrorPin = MOTERR_PIN;
 
 	pinMode(PULLUP_PIN, OUTPUT);
@@ -165,13 +176,15 @@ void setup() {
 
 	syncTimerStateMachine = timerBegin(0, 80, true);
 	timerAttachInterrupt(syncTimerStateMachine, &onsyncTimerStateMachine, true);
-	timerAlarmWrite(syncTimerStateMachine, 10000, true);
+	timerAlarmWrite(syncTimerStateMachine, 100, true);
 	timerAlarmEnable(syncTimerStateMachine);
 
 	syncTimerMotion = timerBegin(1, 80, true);
 	timerAttachInterrupt(syncTimerMotion, &onsyncTimerMotion, true);
-	timerAlarmWrite(syncTimerMotion, 1000, true);
+	timerAlarmWrite(syncTimerMotion, 100, true);
 	timerAlarmEnable(syncTimerMotion);
+
+	beedancer.syncTimerMotion = syncTimerMotion;
 
 	    // Creating the task who send a timeout flag to the stepper controller
 	xTaskCreate(
@@ -183,18 +196,17 @@ void setup() {
 	NULL); // Task handle.
 }
 
-
 void loop() {
 	
 	if(xSemaphoreTake(syncSerialSemaphore, 0) == pdTRUE){
 		Beebrain.handle_message(&inputString);
 	}
 	
-	if(xSemaphoreTake(syncTimerStateMachineSemaphore, xDelay) == pdTRUE){
+	if(xSemaphoreTake(syncTimerStateMachineSemaphore, 0) == pdTRUE){
 		Beebrain.step();
 	}
 	
-	if(xSemaphoreTake(syncTimerMotionSemaphore, xDelay) == pdTRUE){
+	if(xSemaphoreTake(syncTimerMotionSemaphore, 0) == pdTRUE){
 		Controller.step();
 	}
 
